@@ -21,6 +21,7 @@
 - For mobile reflow of wide tables, dedicated card components + a small `useMediaQuery` hook are cleaner than CSS-only `data-label` reflow when the card layout should differ significantly from the table (e.g., title + amount prominent).
 - **Local-First Sync**: Load file content instantly from local cache (`localStorage`), then perform background checking of remote cloud version. Debounce saving local updates to cloud. If offline, continue operating on local copy, marking as pending sync, and retry on next load or update.
 - **Header Pill Modals**: Setup/Metadata screens (like group member management) should be placed in modal overlays accessible via a pill button in the title header rather than being displayed as primary navigation tabs. This helps users focus on primary transaction tabs (Expenses, Payments, Balances).
+- **GitHub Pages Deployment**: Set the `base` path in `vite.config.js` to matching repository path (e.g., `/shared-expenses/`) and use `gh-pages` library with `"predeploy": "npm run build"` and `"deploy": "gh-pages -d dist"` scripts to automate deployment.
 
 ## Patterns That Don't Work
 - Blocking the UI/initial load on cloud database fetching, as this breaks offline usage and degrades performance.
