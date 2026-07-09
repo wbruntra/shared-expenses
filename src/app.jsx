@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'preact/hooks'
 import { FiDownload, FiUpload, FiArrowLeft, FiAlertCircle } from 'react-icons/fi'
 import { Link, useLocation } from 'wouter'
-import { exportToFile, importFromFile } from './lib/store.js'
+import { exportToFile, importFromFile, migrateOldData } from './lib/store.js'
 import { PeopleManager } from './components/PeopleManager.jsx'
 import { ExpenseList } from './components/ExpenseList.jsx'
 import { PaymentList } from './components/PaymentList.jsx'
@@ -21,22 +21,22 @@ import {
 import './app.css'
 
 const TABS = [
-  { id: 'people', label: 'People' },
   { id: 'expenses', label: 'Expenses' },
   { id: 'payments', label: 'Payments' },
   { id: 'balances', label: 'Balances' },
 ]
 
-const DEFAULT_TAB = 'people'
+const DEFAULT_TAB = 'expenses'
 
 export function App() {
   const [connection, setConnectionState] = useState(getConnection)
   const [db, setDb] = useState(() => (connection ? createJsonDrop(connection) : null))
   const [activeFile, setActiveFileState] = useState(getActiveFile)
   const [connectError, setConnectError] = useState('')
+  const [showConnect, setShowConnect] = useState(false)
+  const [showGroupModal, setShowGroupModal] = useState(false)
 
-  const filePath = activeFile?.path || null
-  const file = useJsonDropFile(db, filePath)
+  const file = useJsonDropFile(db, activeFile, setActiveFileState)
 
   const [location, setLocation] = useLocation()
   const fileInputRef = useRef(null)
@@ -44,6 +44,18 @@ export function App() {
   const activeTab = TABS.some((tab) => `/${tab.id}` === location)
     ? location.slice(1)
     : DEFAULT_TAB
+
+  useEffect(() => {
+    migrateOldData()
+  }, [])
+
+  useEffect(() => {
+    if (activeFile) {
+      setActiveFileStorage(activeFile)
+    } else {
+      clearActiveFileStorage()
+    }
+  }, [activeFile])
 
   useEffect(() => {
     if (!TABS.some((tab) => `/${tab.id}` === location)) {
@@ -60,6 +72,7 @@ export function App() {
     persistConnection(config)
     setConnectionState(config)
     setDb(createJsonDrop(config))
+    setShowConnect(false)
   }
 
   function handleDisconnect() {
@@ -70,12 +83,10 @@ export function App() {
   }
 
   function handleOpenFile(openedFile) {
-    setActiveFileStorage({ path: openedFile.path, name: openedFile.name })
-    setActiveFileState({ path: openedFile.path, name: openedFile.name })
+    setActiveFileState(openedFile)
   }
 
   function handleCloseFile() {
-    clearActiveFileStorage()
     setActiveFileState(null)
     setLocation(`/${DEFAULT_TAB}`, { replace: true })
   }
@@ -107,10 +118,14 @@ export function App() {
     }
   }
 
-  if (!connection) {
+  if (showConnect) {
     return (
       <div class="app">
-        <ConnectScreen onConnect={handleConnect} error={connectError} />
+        <ConnectScreen
+          onConnect={handleConnect}
+          onCancel={() => setShowConnect(false)}
+          error={connectError}
+        />
       </div>
     )
   }
@@ -123,6 +138,7 @@ export function App() {
           connection={connection}
           onOpenFile={handleOpenFile}
           onDisconnect={handleDisconnect}
+          onConnectClick={() => setShowConnect(true)}
         />
       </div>
     )
@@ -144,6 +160,14 @@ export function App() {
             <FiArrowLeft />
           </button>
           <h1>{data.name}</h1>
+          <button
+            type="button"
+            class="group-pill-btn"
+            onClick={() => setShowGroupModal(true)}
+            title="Manage group members"
+          >
+            👥 {data.people?.length || 0} {data.people?.length === 1 ? 'person' : 'people'}
+          </button>
         </div>
         <div class="header-actions">
           <SaveStatus status={status} />
@@ -225,9 +249,6 @@ export function App() {
           </nav>
 
           <main class="app-main">
-            {activeTab === 'people' && (
-              <PeopleManager data={data} onChange={setData} />
-            )}
             {activeTab === 'expenses' && (
               <ExpenseList data={data} onChange={setData} />
             )}
@@ -238,12 +259,39 @@ export function App() {
           </main>
         </>
       )}
+
+      {showGroupModal && (
+        <div class="dialog-modal">
+          <div class="dialog-backdrop" onClick={() => setShowGroupModal(false)} />
+          <div class="dialog-content">
+            <header class="dialog-header">
+              <h2>Group Members</h2>
+              <button
+                type="button"
+                class="icon-button secondary"
+                onClick={() => setShowGroupModal(false)}
+                aria-label="Close"
+                title="Close"
+                style={{ border: 'none', padding: '4px', fontSize: '18px', background: 'transparent' }}
+              >
+                ✕
+              </button>
+            </header>
+            <div class="dialog-body">
+              <PeopleManager data={data} onChange={setData} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
 function SaveStatus({ status }) {
-  if (status === 'saving') return <span class="save-status saving">Saving…</span>
-  if (status === 'saved') return <span class="save-status saved">Saved</span>
+  if (status === 'saving') return <span class="save-status saving">Saving to cloud…</span>
+  if (status === 'syncing') return <span class="save-status saving">Syncing…</span>
+  if (status === 'saved') return <span class="save-status saved">Synced</span>
+  if (status === 'offline') return <span class="save-status offline">Offline (Saved locally)</span>
+  if (status === 'idle') return <span class="save-status saved-local">Saved locally</span>
   return null
 }

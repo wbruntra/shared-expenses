@@ -19,8 +19,11 @@
 - Use a small epsilon for floating-point money comparisons.
 - When editing expense participants, immediately remove deselected people from the split state so validation totals stay correct.
 - For mobile reflow of wide tables, dedicated card components + a small `useMediaQuery` hook are cleaner than CSS-only `data-label` reflow when the card layout should differ significantly from the table (e.g., title + amount prominent).
+- **Local-First Sync**: Load file content instantly from local cache (`localStorage`), then perform background checking of remote cloud version. Debounce saving local updates to cloud. If offline, continue operating on local copy, marking as pending sync, and retry on next load or update.
+- **Header Pill Modals**: Setup/Metadata screens (like group member management) should be placed in modal overlays accessible via a pill button in the title header rather than being displayed as primary navigation tabs. This helps users focus on primary transaction tabs (Expenses, Payments, Balances).
 
 ## Patterns That Don't Work
+- Blocking the UI/initial load on cloud database fetching, as this breaks offline usage and degrades performance.
 
 ## Domain Notes
 - Balance formula: `paid − owed + sent − received`.
@@ -29,3 +32,4 @@
   - `sent`: payments the person made to others (reduces their debt, positive).
   - `received`: payments the person received from others (reduces their credit, negative).
 - Settlement uses greedy matching of largest debtor to largest creditor.
+

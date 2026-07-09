@@ -49,9 +49,7 @@ export function PeopleManager({ data, onChange }) {
   }
 
   return (
-    <section class="panel">
-      <h2>People</h2>
-
+    <div class="people-manager">
       <form class="inline-form" onSubmit={handleAdd}>
         <input
           type="text"
@@ -129,6 +127,6 @@ export function PeopleManager({ data, onChange }) {
           ))}
         </ul>
       )}
-    </section>
+    </div>
   )
 }

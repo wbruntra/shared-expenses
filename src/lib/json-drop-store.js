@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'preact/hooks'
 import { JsonDrop, JsonDropError } from '@wbruntra/json-drop'
 import { createEmptyData } from './data.js'
+import { getLocalFileData, saveLocalFileData, updateFileMetadata } from './store.js'
 
 const CONNECTION_KEY = 'json-drop-connection'
 const ACTIVE_FILE_KEY = 'json-drop-active-file'
@@ -49,7 +50,7 @@ export function createJsonDrop(config) {
   })
 }
 
-function normalizeContent(content) {
+export function normalizeContent(content) {
   return {
     name: content?.name || 'Untitled',
     people: Array.isArray(content?.people) ? content.people : [],
@@ -102,88 +103,211 @@ export async function deleteFile(db, path, version) {
   await db.doc(path).delete({ ifMatch: version })
 }
 
-export function useJsonDropFile(db, filePath) {
-  const [data, setData] = useState(emptyFileData)
+export function useJsonDropFile(db, activeFile, setActiveFileState) {
+  const [data, setData] = useState(() => (activeFile ? getLocalFileData(activeFile.id) : emptyFileData()))
   const [status, setStatus] = useState('idle')
   const [error, setError] = useState(null)
   const [errorCode, setErrorCode] = useState(null)
-  const versionRef = useRef(null)
-  const dataRef = useRef(data)
   const saveTimer = useRef(null)
-  const skipNextSave = useRef(false)
-
-  dataRef.current = data
+  const isInitialLoad = useRef(true)
+  const prevFileId = useRef(activeFile?.id)
 
   useEffect(() => {
-    if (!db || !filePath) {
-      versionRef.current = null
+    if (!activeFile) {
       setData(emptyFileData())
       setStatus('idle')
       setError(null)
+      setErrorCode(null)
+      prevFileId.current = null
       return
     }
+
+    if (prevFileId.current !== activeFile.id) {
+      prevFileId.current = activeFile.id
+      isInitialLoad.current = true
+      const localData = getLocalFileData(activeFile.id)
+      setData(localData)
+      setStatus('idle')
+      setError(null)
+      setErrorCode(null)
+    }
+
+    if (activeFile.type !== 'synced' || !db) {
+      return
+    }
+
     let cancelled = false
-    setStatus('loading')
-    setError(null)
-    setErrorCode(null)
-    db.doc(filePath).get()
+    setStatus('syncing')
+
+    db.doc(activeFile.path).get()
       .then((doc) => {
         if (cancelled) return
-        versionRef.current = doc.version
-        skipNextSave.current = true
-        setData(normalizeContent(doc.content))
-        setStatus('idle')
+
+        const remoteVersion = doc.version
+        const localVersion = activeFile.version
+
+        if (remoteVersion !== localVersion) {
+          if (!activeFile.hasUnsavedChanges) {
+            const remoteContent = normalizeContent(doc.content)
+            setData(remoteContent)
+            saveLocalFileData(activeFile.id, remoteContent)
+
+            const updatedMeta = {
+              ...activeFile,
+              version: remoteVersion,
+              updatedAt: doc.updated_at || new Date().toISOString(),
+            }
+            updateFileMetadata(activeFile.id, updatedMeta)
+            if (setActiveFileState) {
+              setActiveFileState(updatedMeta)
+            }
+            setStatus('idle')
+          } else {
+            setStatus('conflict')
+          }
+        } else {
+          if (activeFile.hasUnsavedChanges) {
+            triggerCloudSave(data, doc.version)
+          } else {
+            setStatus('idle')
+          }
+        }
       })
       .catch((e) => {
         if (cancelled) return
-        setStatus('error')
+        setStatus('offline')
         setError(msgFor(e))
         setErrorCode(e instanceof JsonDropError ? e.code : null)
       })
-    return () => { cancelled = true }
-  }, [db, filePath])
+
+    return () => {
+      cancelled = true
+    }
+  }, [db, activeFile?.id])
 
   useEffect(() => {
-    if (!db || !filePath || status === 'loading' || status === 'conflict' || !versionRef.current) return
-    if (skipNextSave.current) {
-      skipNextSave.current = false
+    if (!activeFile) return
+
+    if (isInitialLoad.current) {
+      isInitialLoad.current = false
       return
     }
+
+    saveLocalFileData(activeFile.id, data)
+
+    const updatedMeta = {
+      ...activeFile,
+      hasUnsavedChanges: activeFile.type === 'synced',
+      updatedAt: new Date().toISOString(),
+    }
+    updateFileMetadata(activeFile.id, updatedMeta)
+    if (setActiveFileState) {
+      setActiveFileState(updatedMeta)
+    }
+
+    if (activeFile.type !== 'synced' || !db || status === 'conflict') {
+      return
+    }
+
     clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
       setStatus('saving')
       try {
-        const result = await db.doc(filePath).set(dataRef.current, { ifMatch: versionRef.current })
-        versionRef.current = result.version
+        const result = await db.doc(activeFile.path).set(data, { ifMatch: activeFile.version })
+        const savedMeta = {
+          ...activeFile,
+          hasUnsavedChanges: false,
+          version: result.version,
+          updatedAt: new Date().toISOString(),
+        }
+        updateFileMetadata(activeFile.id, savedMeta)
+        if (setActiveFileState) {
+          setActiveFileState(savedMeta)
+        }
         setStatus('saved')
       } catch (e) {
         if (e instanceof JsonDropError && e.code === 'conflict') {
           setStatus('conflict')
         } else {
-          setStatus('error')
+          setStatus('offline')
           setError(msgFor(e))
           setErrorCode(e instanceof JsonDropError ? e.code : null)
         }
       }
-    }, 800)
+    }, 1000)
+
     return () => clearTimeout(saveTimer.current)
-  }, [data, db, filePath])
+  }, [data])
+
+  async function triggerCloudSave(currentData, remoteVersion) {
+    setStatus('saving')
+    try {
+      const result = await db.doc(activeFile.path).set(currentData, { ifMatch: remoteVersion })
+      const savedMeta = {
+        ...activeFile,
+        hasUnsavedChanges: false,
+        version: result.version,
+        updatedAt: new Date().toISOString(),
+      }
+      updateFileMetadata(activeFile.id, savedMeta)
+      if (setActiveFileState) {
+        setActiveFileState(savedMeta)
+      }
+      setStatus('saved')
+    } catch (e) {
+      if (e instanceof JsonDropError && e.code === 'conflict') {
+        setStatus('conflict')
+      } else {
+        setStatus('offline')
+        setError(msgFor(e))
+        setErrorCode(e instanceof JsonDropError ? e.code : null)
+      }
+    }
+  }
 
   async function reload() {
-    const doc = await db.doc(filePath).get()
-    versionRef.current = doc.version
-    skipNextSave.current = true
-    setData(normalizeContent(doc.content))
-    setStatus('idle')
-    setError(null)
+    if (!activeFile || !db) return
+    setStatus('loading')
+    try {
+      const doc = await db.doc(activeFile.path).get()
+      const remoteContent = normalizeContent(doc.content)
+      setData(remoteContent)
+      saveLocalFileData(activeFile.id, remoteContent)
+
+      const updatedMeta = {
+        ...activeFile,
+        hasUnsavedChanges: false,
+        version: doc.version,
+        updatedAt: doc.updated_at || new Date().toISOString(),
+      }
+      updateFileMetadata(activeFile.id, updatedMeta)
+      if (setActiveFileState) {
+        setActiveFileState(updatedMeta)
+      }
+      setStatus('idle')
+      setError(null)
+    } catch (e) {
+      setStatus('error')
+      setError(msgFor(e))
+    }
   }
 
   async function forceOverwrite() {
+    if (!activeFile || !db) return
     setStatus('saving')
     setError(null)
     try {
-      const result = await db.doc(filePath).set(dataRef.current)
-      versionRef.current = result.version
+      const result = await db.doc(activeFile.path).set(data)
+      const updatedMeta = {
+        ...activeFile,
+        hasUnsavedChanges: false,
+        version: result.version,
+        updatedAt: new Date().toISOString(),
+      }
+      updateFileMetadata(activeFile.id, updatedMeta)
+      if (setActiveFileState) {
+        setActiveFileState(updatedMeta)
+      }
       setStatus('saved')
     } catch (e) {
       setStatus('error')

@@ -1,7 +1,7 @@
 import { useState } from 'preact/hooks'
 import { getConnection } from '../lib/json-drop-store.js'
 
-export function ConnectScreen({ onConnect, error }) {
+export function ConnectScreen({ onConnect, onCancel, error }) {
   const existing = getConnection()
   const [baseUrl, setBaseUrl] = useState(existing?.baseUrl || '')
   const [projectId, setProjectId] = useState(existing?.projectId || '')
@@ -39,7 +39,7 @@ export function ConnectScreen({ onConnect, error }) {
           <span>Project ID</span>
           <input
             type="text"
-            placeholder="6nYhRKKDwkbktj4f1AEpK5"
+            placeholder="6nYhRKKDwkbk..."
             value={projectId}
             onInput={(e) => setProjectId(e.currentTarget.value)}
             required
@@ -56,6 +56,11 @@ export function ConnectScreen({ onConnect, error }) {
         </label>
         {error && <div class="error">{error}</div>}
         <div class="form-actions">
+          {onCancel && (
+            <button type="button" class="secondary" onClick={onCancel}>
+              Cancel
+            </button>
+          )}
           <button type="submit">Connect</button>
         </div>
       </form>
