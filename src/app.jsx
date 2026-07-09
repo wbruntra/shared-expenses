@@ -1,11 +1,23 @@
 import { useState, useRef, useEffect } from 'preact/hooks'
-import { FiDownload, FiUpload } from 'react-icons/fi'
+import { FiDownload, FiUpload, FiArrowLeft, FiAlertCircle } from 'react-icons/fi'
 import { Link, useLocation } from 'wouter'
-import { loadData, saveData, exportToFile, importFromFile } from './lib/store.js'
+import { exportToFile, importFromFile } from './lib/store.js'
 import { PeopleManager } from './components/PeopleManager.jsx'
 import { ExpenseList } from './components/ExpenseList.jsx'
 import { PaymentList } from './components/PaymentList.jsx'
 import { BalanceSheet } from './components/BalanceSheet.jsx'
+import { ConnectScreen } from './components/ConnectScreen.jsx'
+import { FilePicker } from './components/FilePicker.jsx'
+import {
+  getConnection,
+  setConnection as persistConnection,
+  clearConnectionStorage,
+  getActiveFile,
+  setActiveFileStorage,
+  clearActiveFileStorage,
+  createJsonDrop,
+  useJsonDropFile,
+} from './lib/json-drop-store.js'
 import './app.css'
 
 const TABS = [
@@ -18,8 +30,14 @@ const TABS = [
 const DEFAULT_TAB = 'people'
 
 export function App() {
-  const [data, setData] = useState(loadData)
-  const [importError, setImportError] = useState('')
+  const [connection, setConnectionState] = useState(getConnection)
+  const [db, setDb] = useState(() => (connection ? createJsonDrop(connection) : null))
+  const [activeFile, setActiveFileState] = useState(getActiveFile)
+  const [connectError, setConnectError] = useState('')
+
+  const filePath = activeFile?.path || null
+  const file = useJsonDropFile(db, filePath)
+
   const [location, setLocation] = useLocation()
   const fileInputRef = useRef(null)
 
@@ -33,43 +51,102 @@ export function App() {
     }
   }, [location, setLocation])
 
-  useEffect(() => {
-    saveData(data)
-  }, [data])
+  function handleConnect(config) {
+    setConnectError('')
+    if (!config.baseUrl || !config.projectId) {
+      setConnectError('Server URL and project ID are required.')
+      return
+    }
+    persistConnection(config)
+    setConnectionState(config)
+    setDb(createJsonDrop(config))
+  }
+
+  function handleDisconnect() {
+    clearConnectionStorage()
+    setConnectionState(null)
+    setDb(null)
+    setActiveFileState(null)
+  }
+
+  function handleOpenFile(openedFile) {
+    setActiveFileStorage({ path: openedFile.path, name: openedFile.name })
+    setActiveFileState({ path: openedFile.path, name: openedFile.name })
+  }
+
+  function handleCloseFile() {
+    clearActiveFileStorage()
+    setActiveFileState(null)
+    setLocation(`/${DEFAULT_TAB}`, { replace: true })
+  }
 
   function handleExport() {
-    exportToFile(data)
+    exportToFile(file.data)
   }
 
   async function handleImport(e) {
-    const file = e.currentTarget.files?.[0]
-    if (!file) return
-    setImportError('')
+    const input = e.currentTarget
+    const clickedFile = input.files?.[0]
+    if (!clickedFile) return
     try {
-      const imported = await importFromFile(file)
+      const imported = await importFromFile(clickedFile)
       if (
         imported.people.length === 0 &&
         imported.expenses.length === 0 &&
         imported.payments.length === 0
       ) {
-        setImportError('The selected file appears to be empty or invalid.')
         return
       }
       if (window.confirm('Replace all current data with the imported file?')) {
-        setData(imported)
+        file.setData({ ...file.data, ...imported })
       }
     } catch {
-      setImportError('Could not read the file. Make sure it is valid JSON.')
+      // ignore invalid file
     } finally {
-      e.currentTarget.value = ''
+      input.value = ''
     }
   }
+
+  if (!connection) {
+    return (
+      <div class="app">
+        <ConnectScreen onConnect={handleConnect} error={connectError} />
+      </div>
+    )
+  }
+
+  if (!activeFile) {
+    return (
+      <div class="app">
+        <FilePicker
+          db={db}
+          connection={connection}
+          onOpenFile={handleOpenFile}
+          onDisconnect={handleDisconnect}
+        />
+      </div>
+    )
+  }
+
+  const { data, setData, status, error, errorCode, reload, forceOverwrite } = file
 
   return (
     <div class="app">
       <header class="app-header">
-        <h1>Shared Expenses</h1>
+        <div class="header-title">
+          <button
+            type="button"
+            class="icon-button secondary"
+            onClick={handleCloseFile}
+            aria-label="Back to files"
+            title="Back to files"
+          >
+            <FiArrowLeft />
+          </button>
+          <h1>{data.name}</h1>
+        </div>
         <div class="header-actions">
+          <SaveStatus status={status} />
           <button
             type="button"
             class="icon-button secondary"
@@ -98,32 +175,75 @@ export function App() {
         </div>
       </header>
 
-      {importError && <div class="global-error">{importError}</div>}
+      {status === 'conflict' && (
+        <div class="conflict-banner">
+          <span class="conflict-text">
+            <FiAlertCircle /> Another device updated this file.
+          </span>
+          <div class="conflict-actions">
+            <button type="button" class="secondary" onClick={reload}>
+              Reload their changes
+            </button>
+            <button type="button" onClick={forceOverwrite}>
+              Overwrite with mine
+            </button>
+          </div>
+        </div>
+      )}
 
-      <nav class="tabs">
-        {TABS.map((tab) => (
-          <Link
-            key={tab.id}
-            href={`/${tab.id}`}
-            class={activeTab === tab.id ? 'active' : ''}
-          >
-            {tab.label}
-          </Link>
-        ))}
-      </nav>
+      {status === 'error' && error && (
+        errorCode === 'not_found' ? (
+          <div class="conflict-banner">
+            <span class="conflict-text">
+              <FiAlertCircle /> This file no longer exists on the server.
+            </span>
+            <div class="conflict-actions">
+              <button type="button" onClick={handleCloseFile}>
+                Back to files
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div class="global-error">{error}</div>
+        )
+      )}
 
-      <main class="app-main">
-        {activeTab === 'people' && (
-          <PeopleManager data={data} onChange={setData} />
-        )}
-        {activeTab === 'expenses' && (
-          <ExpenseList data={data} onChange={setData} />
-        )}
-        {activeTab === 'payments' && (
-          <PaymentList data={data} onChange={setData} />
-        )}
-        {activeTab === 'balances' && <BalanceSheet data={data} />}
-      </main>
+      {status === 'loading' ? (
+        <p class="empty">Loading file…</p>
+      ) : (
+        <>
+          <nav class="tabs">
+            {TABS.map((tab) => (
+              <Link
+                key={tab.id}
+                href={`/${tab.id}`}
+                class={activeTab === tab.id ? 'active' : ''}
+              >
+                {tab.label}
+              </Link>
+            ))}
+          </nav>
+
+          <main class="app-main">
+            {activeTab === 'people' && (
+              <PeopleManager data={data} onChange={setData} />
+            )}
+            {activeTab === 'expenses' && (
+              <ExpenseList data={data} onChange={setData} />
+            )}
+            {activeTab === 'payments' && (
+              <PaymentList data={data} onChange={setData} />
+            )}
+            {activeTab === 'balances' && <BalanceSheet data={data} />}
+          </main>
+        </>
+      )}
     </div>
   )
+}
+
+function SaveStatus({ status }) {
+  if (status === 'saving') return <span class="save-status saving">Saving…</span>
+  if (status === 'saved') return <span class="save-status saved">Saved</span>
+  return null
 }

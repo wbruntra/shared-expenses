@@ -5,6 +5,7 @@
     "": {
       "name": "2026-07-08-shared-expenses",
       "dependencies": {
+        "@wbruntra/json-drop": "^0.2.0",
         "preact": "^10.29.3",
         "react-icons": "^5.7.0",
         "wouter": "^3.10.0",
@@ -125,6 +126,8 @@
     "@tybys/wasm-util": ["@tybys/wasm-util@0.10.3", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-F3fo1MYrRJYL3zER0OUOmkutjr1Vp23m7OsSgp7nq4SP6OqX6C/56XFIPAl5bt3zaBRjmW7SGz3u/6LwFpYcOg=="],
 
     "@types/estree": ["@types/estree@1.0.9", "", {}, "sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg=="],
+
+    "@wbruntra/json-drop": ["@wbruntra/json-drop@0.2.0", "https://npm.pkg.github.com/download/@wbruntra/json-drop/0.2.0/cf9e1e121c9bd42949e1eb59449b42b0d507d9f6", {}, "sha512-X2xz1nyrdNnDKakuI3qHnUvok6Z2Wj/1Eys/B5/8TThq17esIdsUPVRGbLWk5e5lC8YjNpc60WXP5v/viOhhbQ=="],
 
     "babel-plugin-transform-hook-names": ["babel-plugin-transform-hook-names@1.0.2", "", { "peerDependencies": { "@babel/core": "^7.12.10" } }, "sha512-5gafyjyyBTTdX/tQQ0hRgu4AhNHG/hqWi0ZZmg2xvs2FgRkJXzDNKBZCyoYqgFkovfDrgM8OoKg8karoUvWeCw=="],
 

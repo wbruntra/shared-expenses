@@ -26,3 +26,4 @@ dist-ssr
 *.json
 secrets.js
 *.csv
+.env
