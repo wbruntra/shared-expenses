@@ -1,11 +1,13 @@
 import { useState } from 'preact/hooks'
 import { FiEdit2, FiPlus, FiTrash2 } from 'react-icons/fi'
 import { formatCurrency } from '../lib/data.js'
+import { useMediaQuery } from '../lib/use-media-query.js'
 import { PaymentForm } from './PaymentForm.jsx'
 
 export function PaymentList({ data, onChange }) {
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState(null)
+  const isMobile = useMediaQuery('(max-width: 600px)')
   const peopleById = Object.fromEntries(data.people.map((p) => [p.id, p]))
 
   const sortedPayments = [...data.payments].sort(
@@ -79,6 +81,42 @@ export function PaymentList({ data, onChange }) {
 
       {sortedPayments.length === 0 ? (
         <p class="empty">No payments yet.</p>
+      ) : isMobile ? (
+        <ul class="card-list">
+          {sortedPayments.map((payment) => (
+            <li key={payment.id} class="card payment-card">
+              <div class="card-header">
+                <span class="card-title">
+                  {peopleById[payment.from]?.name} → {peopleById[payment.to]?.name}
+                </span>
+                <span class="card-amount">{formatCurrency(payment.amount)}</span>
+              </div>
+              <div class="card-meta">
+                <span>{payment.date}</span>
+              </div>
+              <div class="card-actions">
+                <button
+                  type="button"
+                  class="icon-button secondary"
+                  onClick={() => handleEdit(payment)}
+                  aria-label="Edit"
+                  title="Edit"
+                >
+                  <FiEdit2 />
+                </button>
+                <button
+                  type="button"
+                  class="icon-button danger"
+                  onClick={() => handleDelete(payment.id)}
+                  aria-label="Delete"
+                  title="Delete"
+                >
+                  <FiTrash2 />
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
       ) : (
         <div class="table-wrap">
           <table class="data-table">

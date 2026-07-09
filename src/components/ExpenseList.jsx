@@ -1,12 +1,14 @@
 import { useState } from 'preact/hooks'
 import { FiCopy, FiEdit2, FiPlus, FiTrash2 } from 'react-icons/fi'
 import { formatCurrency } from '../lib/data.js'
+import { useMediaQuery } from '../lib/use-media-query.js'
 import { ExpenseForm } from './ExpenseForm.jsx'
 
 export function ExpenseList({ data, onChange }) {
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [duplicatingExpense, setDuplicatingExpense] = useState(null)
+  const isMobile = useMediaQuery('(max-width: 600px)')
   const peopleById = Object.fromEntries(data.people.map((p) => [p.id, p]))
 
   const sortedExpenses = [...data.expenses].sort(
@@ -102,6 +104,52 @@ export function ExpenseList({ data, onChange }) {
 
       {sortedExpenses.length === 0 ? (
         <p class="empty">No expenses yet.</p>
+      ) : isMobile ? (
+        <ul class="card-list">
+          {sortedExpenses.map((expense) => (
+            <li key={expense.id} class="card expense-card">
+              <div class="card-header">
+                <span class="card-title">{expense.description}</span>
+                <span class="card-amount">{formatCurrency(expense.amount)}</span>
+              </div>
+              <div class="card-meta">
+                <span>{expense.date}</span>
+                <span>·</span>
+                <span>Paid by {peopleById[expense.paidBy]?.name}</span>
+              </div>
+              <div class="card-shares">{formatShares(expense.split)}</div>
+              <div class="card-actions">
+                <button
+                  type="button"
+                  class="icon-button secondary"
+                  onClick={() => handleEdit(expense)}
+                  aria-label="Edit"
+                  title="Edit"
+                >
+                  <FiEdit2 />
+                </button>
+                <button
+                  type="button"
+                  class="icon-button secondary"
+                  onClick={() => handleDuplicate(expense)}
+                  aria-label="Duplicate"
+                  title="Duplicate"
+                >
+                  <FiCopy />
+                </button>
+                <button
+                  type="button"
+                  class="icon-button danger"
+                  onClick={() => handleDelete(expense.id)}
+                  aria-label="Delete"
+                  title="Delete"
+                >
+                  <FiTrash2 />
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
       ) : (
         <div class="table-wrap">
           <table class="data-table">

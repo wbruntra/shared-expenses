@@ -18,6 +18,7 @@
 - Keep calculations pure and separate from UI components.
 - Use a small epsilon for floating-point money comparisons.
 - When editing expense participants, immediately remove deselected people from the split state so validation totals stay correct.
+- For mobile reflow of wide tables, dedicated card components + a small `useMediaQuery` hook are cleaner than CSS-only `data-label` reflow when the card layout should differ significantly from the table (e.g., title + amount prominent).
 
 ## Patterns That Don't Work
 
