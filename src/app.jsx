@@ -1,104 +1,129 @@
-import { useState } from 'preact/hooks'
-import preactLogo from './assets/preact.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
+import { useState, useRef, useEffect } from 'preact/hooks'
+import { FiDownload, FiUpload } from 'react-icons/fi'
+import { Link, useLocation } from 'wouter'
+import { loadData, saveData, exportToFile, importFromFile } from './lib/store.js'
+import { PeopleManager } from './components/PeopleManager.jsx'
+import { ExpenseList } from './components/ExpenseList.jsx'
+import { PaymentList } from './components/PaymentList.jsx'
+import { BalanceSheet } from './components/BalanceSheet.jsx'
 import './app.css'
 
+const TABS = [
+  { id: 'people', label: 'People' },
+  { id: 'expenses', label: 'Expenses' },
+  { id: 'payments', label: 'Payments' },
+  { id: 'balances', label: 'Balances' },
+]
+
+const DEFAULT_TAB = 'people'
+
 export function App() {
-  const [count, setCount] = useState(0)
+  const [data, setData] = useState(loadData)
+  const [importError, setImportError] = useState('')
+  const [location, setLocation] = useLocation()
+  const fileInputRef = useRef(null)
+
+  const activeTab = TABS.some((tab) => `/${tab.id}` === location)
+    ? location.slice(1)
+    : DEFAULT_TAB
+
+  useEffect(() => {
+    if (!TABS.some((tab) => `/${tab.id}` === location)) {
+      setLocation(`/${DEFAULT_TAB}`, { replace: true })
+    }
+  }, [location, setLocation])
+
+  useEffect(() => {
+    saveData(data)
+  }, [data])
+
+  function handleExport() {
+    exportToFile(data)
+  }
+
+  async function handleImport(e) {
+    const file = e.currentTarget.files?.[0]
+    if (!file) return
+    setImportError('')
+    try {
+      const imported = await importFromFile(file)
+      if (
+        imported.people.length === 0 &&
+        imported.expenses.length === 0 &&
+        imported.payments.length === 0
+      ) {
+        setImportError('The selected file appears to be empty or invalid.')
+        return
+      }
+      if (window.confirm('Replace all current data with the imported file?')) {
+        setData(imported)
+      }
+    } catch {
+      setImportError('Could not read the file. Make sure it is valid JSON.')
+    } finally {
+      e.currentTarget.value = ''
+    }
+  }
 
   return (
-    <>
-      <section id="center">
-        <div class="hero">
-          <img src={heroImg} class="base" width="170" height="179" alt="" />
-          <img src={preactLogo} class="framework" alt="Preact logo" />
-          <img src={viteLogo} class="vite" alt="Vite logo" />
+    <div class="app">
+      <header class="app-header">
+        <h1>Shared Expenses</h1>
+        <div class="header-actions">
+          <button
+            type="button"
+            class="icon-button secondary"
+            onClick={handleExport}
+            aria-label="Export JSON"
+            title="Export JSON"
+          >
+            <FiDownload />
+          </button>
+          <button
+            type="button"
+            class="icon-button secondary"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Import JSON"
+            title="Import JSON"
+          >
+            <FiUpload />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json"
+            class="hidden"
+            onChange={handleImport}
+          />
         </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/app.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          class="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+      </header>
 
-      <div class="ticks"></div>
+      {importError && <div class="global-error">{importError}</div>}
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg class="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img class="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://preactjs.com/" target="_blank">
-                <img class="button-icon" src={preactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg class="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg class="button-icon" role="presentation" aria-hidden="true">
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg class="button-icon" role="presentation" aria-hidden="true">
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg class="button-icon" role="presentation" aria-hidden="true">
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg class="button-icon" role="presentation" aria-hidden="true">
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+      <nav class="tabs">
+        {TABS.map((tab) => (
+          <Link
+            key={tab.id}
+            href={`/${tab.id}`}
+            class={activeTab === tab.id ? 'active' : ''}
+          >
+            {tab.label}
+          </Link>
+        ))}
+      </nav>
 
-      <div class="ticks"></div>
-      <section id="spacer"></section>
-    </>
+      <main class="app-main">
+        {activeTab === 'people' && (
+          <PeopleManager data={data} onChange={setData} />
+        )}
+        {activeTab === 'expenses' && (
+          <ExpenseList data={data} onChange={setData} />
+        )}
+        {activeTab === 'payments' && (
+          <PaymentList data={data} onChange={setData} />
+        )}
+        {activeTab === 'balances' && <BalanceSheet data={data} />}
+      </main>
+    </div>
   )
 }
